@@ -16,13 +16,41 @@ export default function Home() {
 
   useEffect(() => {
     const savedToken = sessionStorage.getItem('session_token');
+    const savedLogin = sessionStorage.getItem('session_login');
+
     if (savedToken) {
       setToken(savedToken);
+      if (savedLogin) setLogin(savedLogin);
       fetchTasks(savedToken);
+      refreshToken();
     } else {
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (token) {
+      const intervalId = setInterval(refreshToken, 15 * 60 * 1000);
+      return () => clearInterval(intervalId);
+    }
+  }, [token]);
+
+  const refreshToken = async () => {
+    const currentToken = sessionStorage.getItem('session_token');
+    if (!currentToken) return;
+    try {
+      const res = await axios.get(`${API_URL}/session/get_token`, {
+        headers: { Authorization: `Bearer ${currentToken}` }
+      });
+      const newToken = res.data.token;
+      if (newToken) {
+        sessionStorage.setItem('session_token', newToken);
+        setToken(newToken);
+      }
+    } catch (err) {
+      handleLogout();
+    }
+  };
 
   const fetchTasks = async (authToken: string) => {
     try {
@@ -32,7 +60,6 @@ export default function Home() {
       });
       setTasks(res.data);
     } catch (err) {
-      console.error("Fetch tasks failed", err);
       handleLogout();
     } finally {
       setLoading(false);
@@ -41,10 +68,7 @@ export default function Home() {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    const url = isLoginView
-      ? `${API_URL}/user/login`
-      : `${API_URL}/user/create-user`;
+    const url = isLoginView ? `${API_URL}/user/login` : `${API_URL}/user/create-user`;
 
     try {
       const res = await axios.post(url, { login, password });
@@ -52,6 +76,7 @@ export default function Home() {
 
       if (newToken) {
         sessionStorage.setItem('session_token', newToken);
+        sessionStorage.setItem('session_login', login);
         setToken(newToken);
         await fetchTasks(newToken);
       }
@@ -62,6 +87,7 @@ export default function Home() {
 
   const handleLogout = () => {
     sessionStorage.removeItem('session_token');
+    sessionStorage.removeItem('session_login');
     setToken(null);
     setTasks([]);
     setLogin('');
@@ -119,14 +145,18 @@ export default function Home() {
       <Header isLoggedIn={true} onLogout={handleLogout} />
       <div className="max-w-2xl mx-auto py-12 px-4">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">English Grammar Tasks</h1>
-        <p className="text-gray-500 mb-10">You are logged in as <span className="font-bold text-gray-800">{login}</span></p>
+        <p className="text-gray-500 mb-10">
+          You are logged in as <span className="font-bold text-gray-800">{login}</span>
+        </p>
 
         {loading ? (
           <div className="flex justify-center py-20">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#50c878]"></div>
           </div>
         ) : (
-          tasks.map((task: any) => <TaskCard key={task.id} {...task} />)
+          <div className="space-y-4">
+            {tasks.map((task: any) => <TaskCard key={task.id} {...task} />)}
+          </div>
         )}
       </div>
     </div>
